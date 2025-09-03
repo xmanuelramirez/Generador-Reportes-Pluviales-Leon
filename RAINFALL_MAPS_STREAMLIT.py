@@ -445,17 +445,13 @@ def load_geodata():
             "boundary": gpd.read_file(os.path.join(shapefile_path, "LIMITE.shp")),
             "stations": gpd.read_file(os.path.join(shapefile_path, "ESTACIONES_actualizado.shp")),
             # --- CAMBIO AQUÍ: La carga de hillshade ahora es opcional ---
-            # "hillshade": rasterio.open(os.path.join(shapefile_path, "HILLSHADE_LEON.tif")),
+            "hillshade": rasterio.open(os.path.join(shapefile_path, "HILLSHADE_LEON.tif")),
             "urban": gpd.read_file(os.path.join(shapefile_path, "LIMITE_URBANO.shp")),
             "cuenca": gpd.read_file(os.path.join(shapefile_path, "CUENCA_PALOTE.shp")),
             "presa": gpd.read_file(os.path.join(shapefile_path, "EL PALOTE.shp")),
             "streams": gpd.read_file(os.path.join(shapefile_path, "CORRIENTES_LEON_012025.shp"))
         }
-        # Intenta cargar el hillshade, pero no falles si no está
-        try:
-            data["hillshade"] = rasterio.open(os.path.join(shapefile_path, "HILLSHADE_LEON.tif"))
-        except Exception:
-            data["hillshade"] = None # Si no lo encuentra, lo deja como None
+        
         try:
             data["logo"] = mpimg.imread(os.path.join(shapefile_path, "logo_sapal.png"))
         except FileNotFoundError:
@@ -845,4 +841,5 @@ else:
         
 
                     st.rerun()
+
 

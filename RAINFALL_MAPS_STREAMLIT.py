@@ -56,10 +56,7 @@ warnings.simplefilter('ignore', InsecureRequestWarning)
 st.set_page_config(page_title="Reporte Pluvial de León", layout="wide")
 
 os.environ['PROJ_LIB'] = pyproj.datadir.get_data_dir()
-try:
-    locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')
-except locale.Error:
-    st.warning("No se pudo configurar el idioma a español.")
+
 
 if 'map_generated' not in st.session_state:
     st.session_state.map_generated = False
@@ -297,10 +294,7 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
     log_messages.append("--- Iniciando extracción de SAPAL... ---")
     log_container.markdown("\n\n".join(log_messages))
     
-    st.warning(
-        "⚠️ **ACCIÓN REQUERIDA:** Se abrirá una ventana de Chrome para extraer los datos."
-        "\n\n**Por favor, no cierre esta ventana ni interactúe con ella.** El proceso es automático y la ventana se cerrará sola al terminar."
-    )
+    
     
     driver = None
     try:
@@ -841,5 +835,6 @@ else:
         
 
                     st.rerun()
+
 
 

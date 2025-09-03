@@ -1,0 +1,12 @@
+streamlit
+pandas
+geopandas
+requests
+matplotlib
+pyproj
+selenium
+webdriver-manager
+pykrige
+scikit-learn
+rasterio
+urllib3

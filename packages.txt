@@ -1,0 +1,13 @@
+# Para Geopandas y Rasterio
+gdal-bin
+libgdal-dev
+
+# Para Selenium y Chrome Headless
+chromium-driver
+libx11-6
+libx11-xcb1
+libxext6
+libnss3
+libglib2.0-0
+libgtk-3-0
+libgbm-dev

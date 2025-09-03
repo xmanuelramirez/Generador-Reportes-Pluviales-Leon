@@ -1,8 +1,5 @@
-# Para Geopandas y Rasterio
 gdal-bin
 libgdal-dev
-
-# Para Selenium y Chrome Headless
 chromium-driver
 libx11-6
 libx11-xcb1

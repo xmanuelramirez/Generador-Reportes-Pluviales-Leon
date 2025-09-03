@@ -436,17 +436,23 @@ def find_best_interpolation_model(points_gdf, boundary_gdf):
     return {"raster_io": final_raster_io, "raster_image": out_image, "raster_meta": out_meta, "best_method": best_method_row['Método']}, metrics_df
 @st.cache_resource
 def load_geodata():
-    shapefile_path = "shapefiles"
+    shapefile_path = "shapefiles" # O "Shapefiles", el nombre correcto de tu carpeta
     try:
         data = {
             "boundary": gpd.read_file(os.path.join(shapefile_path, "LIMITE.shp")),
             "stations": gpd.read_file(os.path.join(shapefile_path, "ESTACIONES_actualizado.shp")),
-            "hillshade": rasterio.open(os.path.join(shapefile_path, "HILLSHADE_LEON.tif")),
+            # --- CAMBIO AQUÍ: La carga de hillshade ahora es opcional ---
+            # "hillshade": rasterio.open(os.path.join(shapefile_path, "HILLSHADE_LEON.tif")),
             "urban": gpd.read_file(os.path.join(shapefile_path, "LIMITE_URBANO.shp")),
             "cuenca": gpd.read_file(os.path.join(shapefile_path, "CUENCA_PALOTE.shp")),
             "presa": gpd.read_file(os.path.join(shapefile_path, "EL PALOTE.shp")),
             "streams": gpd.read_file(os.path.join(shapefile_path, "CORRIENTES_LEON_012025.shp"))
         }
+        # Intenta cargar el hillshade, pero no falles si no está
+        try:
+            data["hillshade"] = rasterio.open(os.path.join(shapefile_path, "HILLSHADE_LEON.tif"))
+        except Exception:
+            data["hillshade"] = None # Si no lo encuentra, lo deja como None
         try:
             data["logo"] = mpimg.imread(os.path.join(shapefile_path, "logo_sapal.png"))
         except FileNotFoundError:
@@ -834,4 +840,5 @@ else:
                         "metrics_df": metrics_df
                     }
         
+
                     st.rerun()

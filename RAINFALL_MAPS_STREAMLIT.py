@@ -534,13 +534,13 @@ else:
                         "\n\nSe usará la fecha de hoy como referencia. Los datos de CONAGUA podrían no estar actualizados."
                     )
                     st.info(f"El reporte se generará con fecha de corte: **{report_date.strftime('%d de %B de %Y')}**")
-                 st.header("3. Elige la rampa de color del mapa") #quitar por si acaso esto
-                 color_option = st.radio(
-                     "Selecciona cómo visualizar la precipitación:",
-                     ('Original (Rojo-Amarillo-Azul)', 'Escala de Azules (Menor a Mayor)'),
-                     index=0,
-                     key="color_option"
-                 )
+                 st.header("3. Elige la rampa de color del mapa")
+        color_option = st.radio(
+            "Selecciona cómo visualizar la precipitación:",
+            ('Original (Rojo-Amarillo-Azul)', 'Escala de Azules (Menor a Mayor)'),
+            index=0,
+            key="color_option"
+        )
         if st.button("🚀 Generar Reporte Pluvial", type="primary"):
             if report_date is None:
                 st.error("No se pudo determinar una fecha para el reporte.")
@@ -850,6 +850,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

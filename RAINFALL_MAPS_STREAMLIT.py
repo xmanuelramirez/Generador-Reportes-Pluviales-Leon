@@ -534,7 +534,7 @@ else:
                         "\n\nSe usará la fecha de hoy como referencia. Los datos de CONAGUA podrían no estar actualizados."
                     )
                     st.info(f"El reporte se generará con fecha de corte: **{report_date.strftime('%d de %B de %Y')}**")
-                 st.header("3. Elige la rampa de color del mapa")
+        st.header("3. Elige la rampa de color del mapa")
         color_option = st.radio(
             "Selecciona cómo visualizar la precipitación:",
             ('Original (Rojo-Amarillo-Azul)', 'Escala de Azules (Menor a Mayor)'),
@@ -850,6 +850,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

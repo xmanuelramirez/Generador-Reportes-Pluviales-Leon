@@ -534,6 +534,13 @@ else:
                         "\n\nSe usará la fecha de hoy como referencia. Los datos de CONAGUA podrían no estar actualizados."
                     )
                     st.info(f"El reporte se generará con fecha de corte: **{report_date.strftime('%d de %B de %Y')}**")
+                 st.header("3. Elige la rampa de color del mapa") #quitar por si acaso esto
+                 color_option = st.radio(
+                     "Selecciona cómo visualizar la precipitación:",
+                     ('Original (Rojo-Amarillo-Azul)', 'Escala de Azules (Menor a Mayor)'),
+                     index=0,
+                     key="color_option"
+                 )
         if st.button("🚀 Generar Reporte Pluvial", type="primary"):
             if report_date is None:
                 st.error("No se pudo determinar una fecha para el reporte.")
@@ -641,7 +648,15 @@ else:
                     if interpolation_results and np.any(interpolation_results["raster_image"]):
                         raster_image = np.ma.masked_invalid(interpolation_results["raster_image"])
                         raster_meta = interpolation_results["raster_meta"]
-                        custom_cmap = LinearSegmentedColormap.from_list('custom_precip', ['#f03725', '#F3FD89', '#1FB6EA'])
+                                                # --- INICIO DEL BLOQUE MODIFICADO ---
+                        # Decide qué rampa de color usar basado en la selección del usuario
+                        if color_option == 'Escala de Azules (Menor a Mayor)':
+                            # Rampa de azules: de un celeste muy pálido a un azul oscuro pero distinto al de los ríos.
+                            # El color de los ríos es '#10008C', por lo que evitamos azules tan oscuros.
+                            custom_cmap = LinearSegmentedColormap.from_list('blue_precip', ['#E1F5FE', '#4FC3F7', '#0D47A1'])
+                        else: # Opción 'Original (Rojo-Amarillo-Azul)'
+                            custom_cmap = LinearSegmentedColormap.from_list('custom_precip', ['#f03725', '#F3FD89', '#1FB6EA'])
+                        # --- FIN DEL BLOQUE MODIFICADO ---
                         precip_min = stations_filtered_gdf['P_mm'].min()
                         precip_max = stations_filtered_gdf['P_mm'].max()
                         # ### CAMBIO AQUÍ ###: ZORDER 2 para la precipitación (debajo de los ríos)
@@ -835,6 +850,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

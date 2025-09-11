@@ -333,18 +333,28 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
             try:
                 time.sleep(1)
 
-                dropdown = driver.find_element(By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]")
+                # Abrir el menú cada vez
+                dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]")))
                 dropdown.click()
-                time.sleep(0.5)
                 
-                station_element = driver.find_element(By.XPATH, f"//li[contains(text(), '{station}')]")
+                # Esperar que aparezca la estación exacta
+                station_element = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, f"//li[normalize-space(text())='{station}']"))
+                )
+                
+                # Asegurar que esté visible antes de hacer click
+                driver.execute_script("arguments[0].scrollIntoView(true);", station_element)
                 station_element.click()
-                time.sleep(0.5)
+
                 
-                ver_button = driver.find_element(By.XPATH, "//button[.//span[text()='Ver']]")
+                ver_button = wait.until(
+                 EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Ver']]"))
+                )
                 ver_button.click()
-                
-                time.sleep(1.5)
+            
+            # Espera a que la tabla cargue en lugar de dormir fijo
+            wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, "td.MuiTableCell-root div")))
+
                 
                 elements = driver.find_elements(By.CSS_SELECTOR, "td.MuiTableCell-root div")
                 precip_text = elements[7].text if len(elements) >= 8 else '0'
@@ -850,6 +860,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

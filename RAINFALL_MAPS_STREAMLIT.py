@@ -290,38 +290,30 @@ def get_latest_conagua_date(stations):
     return None
 
 def fetch_sapal_data(stations, report_date, log_messages, log_container):
-    """Realiza web scraping en SAPAL, adaptando la lógica robusta de R con pausas fijas."""
+    """Realiza web scraping en SAPAL, reemplazando la pausa fija por una espera inteligente y robusta."""
     results = []
     log_messages.append("--- Iniciando extracción de SAPAL... ---")
     log_container.markdown("\n\n".join(log_messages))
 
-
-
     driver = None
     try:
-        # --- OPCIONES ESPECÍFICAS PARA LA NUBE ---
+        # --- Configuración del WebDriver (sin cambios) ---
         options = webdriver.ChromeOptions()
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
+        options.add_argument("--headless"); options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage"); options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1920,1080")
-
-        # Usar el chromedriver instalado por el sistema
+        
         service = ChromeService(executable_path='/usr/bin/chromedriver')
-
         driver = webdriver.Chrome(service=service, options=options)
-        # --- FIN DE LA CONFIGURACIÓN PARA LA NUBE ---
+        
+        wait = WebDriverWait(driver, 45) # Un timeout general y generoso
 
-        wait = WebDriverWait(driver, 45)
-
+        # --- Configuración de la página (sin cambios) ---
         driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
-
         wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="from"]')))
-
         wait.until(EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[2]"))).click()
         wait.until(EC.element_to_be_clickable((By.XPATH, "//li[contains(text(), 'Diario')]"))).click()
-
+        
         start_of_year_str = datetime(report_date.year, 1, 1).strftime("%d%m%Y")
         end_date_str = report_date.strftime("%d%m%Y")
 
@@ -332,8 +324,16 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
 
         for station in stations:
             try:
-                time.sleep(1)
+                # 1. "Recordar" el valor actual de la tabla antes de hacer nada
+                precip_text_before = "-9999.99"
+                try:
+                    precip_element = driver.find_element(By.XPATH, "(//td[contains(@class, 'MuiTableCell-root')]//div)[8]")
+                    precip_text_before = precip_element.text
+                except NoSuchElementException:
+                    pass # La tabla no existe en la primera iteración, está bien.
 
+                # 2. Tu flujo de selección original, que funciona bien
+                time.sleep(1) # Pausa para estabilidad del dropdown
                 dropdown = driver.find_element(By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]")
                 dropdown.click()
                 time.sleep(0.5)
@@ -345,8 +345,17 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
                 ver_button = driver.find_element(By.XPATH, "//button[.//span[text()='Ver']]")
                 ver_button.click()
 
-                time.sleep(1.5)
+                # 3. LA SOLUCIÓN: Reemplazar time.sleep(1.5) por una espera que verifica el cambio
+                wait.until(
+                    EC.not_(
+                        EC.text_to_be_present_in_element(
+                            (By.XPATH, "(//td[contains(@class, 'MuiTableCell-root')]//div)[8]"), 
+                            precip_text_before
+                        )
+                    )
+                )
 
+                # 4. Leer el dato, ahora con 100% de certeza que es el nuevo
                 elements = driver.find_elements(By.CSS_SELECTOR, "td.MuiTableCell-root div")
                 precip_text = elements[7].text if len(elements) >= 8 else '0'
                 precip = float(precip_text.replace(",", ""))
@@ -354,7 +363,7 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
                 log_messages.append(f"✅ **SAPAL {station}:** {precip} mm")
 
             except Exception as e:
-                log_messages.append(f"⚠️ **SAPAL {station}:** Error. Se registrará como N/A.")
+                log_messages.append(f"⚠️ **SAPAL {station}:** Error ({type(e).__name__}). Se registrará como N/A.")
                 results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
 
             log_container.markdown("\n\n".join(log_messages))
@@ -852,6 +861,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

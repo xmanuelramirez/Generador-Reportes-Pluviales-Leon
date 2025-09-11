@@ -290,8 +290,8 @@ def get_latest_conagua_date(stations):
     return None
 def fetch_sapal_data(stations, report_date, log_messages, log_container):
     """
-    Realiza web scraping en SAPAL con una lógica robusta de "antes y después"
-    para garantizar la lectura correcta de datos dinámicos.
+    Realiza web scraping en SAPAL con clics de JavaScript y esperas explícitas
+    para máxima robustez contra errores de sincronización y elementos que se superponen.
     """
     results = []
     log_messages.append("--- Iniciando extracción de SAPAL... ---")
@@ -330,31 +330,36 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         fecha_final.click(); fecha_final.clear(); fecha_final.send_keys(end_date_str)
 
         for station in stations:
-            # ---> INICIA LA LÓGICA DE SINCRONIZACIÓN <---
-            precip_text_before = "-9999.99" # Valor señuelo que nunca existirá en la página
+            precip_text_before = "-9999.99"
             try:
-                # 1. OBTENER EL VALOR "ANTES" (si la tabla ya existe)
+                # 1. OBTENER VALOR "ANTES"
                 try:
                     current_elements = driver.find_elements(By.CSS_SELECTOR, "td.MuiTableCell-root div")
                     if len(current_elements) >= 8:
                         precip_text_before = current_elements[7].text
                 except (NoSuchElementException, IndexError):
-                    # No pasa nada si no lo encuentra, significa que es la primera iteración
                     pass
 
-                # 2. REALIZAR LA ACCIÓN (Seleccionar estación y hacer clic)
+                # 2. REALIZAR ACCIÓN
                 dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]")))
                 dropdown.click()
                 
+                # Esperar a que la lista del menú sea visible
+                station_list_locator = (By.CSS_SELECTOR, "ul[role='listbox']")
+                wait.until(EC.visibility_of_element_located(station_list_locator))
+                
                 station_element = wait.until(EC.element_to_be_clickable((By.XPATH, f"//li[contains(text(), '{station}')]")))
-                station_element.click()
                 
+                # --- MEJORA 1: Usar click de JavaScript para evitar intercepciones ---
+                driver.execute_script("arguments[0].click();", station_element)
+                
+                # --- MEJORA 2: Esperar a que la lista desaparezca para estabilizar la UI ---
+                wait.until(EC.invisibility_of_element_located(station_list_locator))
+
                 ver_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Ver']]")))
-                ver_button.click()
+                driver.execute_script("arguments[0].click();", ver_button) # JS click también aquí por seguridad
                 
-                # 3. ESPERAR EL CAMBIO (EL "DESPUÉS")
-                # Esta es la línea clave. Espera a que el texto del elemento SEA DIFERENTE
-                # al que teníamos ANTES de hacer clic.
+                # 3. ESPERAR A QUE EL DATO CAMBIE (lógica "antes y después")
                 wait.until(
                     EC.not_(
                         EC.text_to_be_present_in_element(
@@ -364,8 +369,7 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
                     )
                 )
 
-                # 4. LEER EL DATO NUEVO CON SEGURIDAD
-                # Ahora que sabemos que el valor cambió, lo leemos.
+                # 4. LEER EL NUEVO DATO
                 elements_after = driver.find_elements(By.CSS_SELECTOR, "td.MuiTableCell-root div")
                 precip_text = elements_after[7].text if len(elements_after) >= 8 else '0'
 
@@ -374,7 +378,7 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
                 log_messages.append(f"✅ **SAPAL {station}:** {precip} mm")
 
             except TimeoutException:
-                 log_messages.append(f"⚠️ **SAPAL {station}:** Timeout. El valor no se actualizó en la página. Se registrará como N/A.")
+                 log_messages.append(f"⚠️ **SAPAL {station}:** Timeout. El valor no se actualizó. Se registrará como N/A.")
                  results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
             except Exception as e:
                 log_messages.append(f"⚠️ **SAPAL {station}:** Error inesperado ({type(e).__name__}). Se registrará como N/A.")
@@ -874,6 +878,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

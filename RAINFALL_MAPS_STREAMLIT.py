@@ -331,43 +331,26 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
 
         for station in stations:
             try:
-                # La lógica de selección de estación se mantiene igual
-                dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]")))
+                time.sleep(1)
+                dropdown = driver.find_element(By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]")
                 dropdown.click()
+                time.sleep(0.5)
                 
-                # Usar una espera explícita también aquí es más robusto
-                station_element = wait.until(EC.element_to_be_clickable((By.XPATH, f"//li[contains(text(), '{station}')]")))
+                station_element = driver.find_element(By.XPATH, f"//li[contains(text(), '{station}')]")
                 station_element.click()
+                time.sleep(0.5)
                 
-                ver_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Ver']]")))
+                ver_button = driver.find_element(By.XPATH, "//button[.//span[text()='Ver']]")
                 ver_button.click()
                 
-                # <-- CAMBIO 2: La lógica de espera inteligente
-                # En lugar de time.sleep(1.5), esperamos a que el texto del elemento de precipitación cambie.
-                # El timeout de 20 segundos es el tiempo máximo que esperará antes de fallar.
-                wait.until(
-                    EC.not_(
-                        EC.text_to_be_present_in_element(
-                            (By.XPATH, "(//td[contains(@class, 'MuiTableCell-root')]//div)[8]"), 
-                            last_precip_text
-                        )
-                    )
-                )
-
-                # Ahora que sabemos que el valor ha cambiado, lo leemos de forma segura
+                time.sleep(1.5)
+                
                 elements = driver.find_elements(By.CSS_SELECTOR, "td.MuiTableCell-root div")
                 precip_text = elements[7].text if len(elements) >= 8 else '0'
-                
-                # <-- CAMBIO 3: Actualizamos el valor de referencia para la siguiente iteración
-                last_precip_text = precip_text
-
                 precip = float(precip_text.replace(",", ""))
                 results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': precip})
                 log_messages.append(f"✅ **SAPAL {station}:** {precip} mm")
 
-            except TimeoutException: # <-- CAMBIO 4: Manejar el caso en que el valor nunca cambia
-                 log_messages.append(f"⚠️ **SAPAL {station}:** Timeout. El valor no se actualizó en la página. Se registrará como N/A.")
-                 results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
             except Exception as e:
                 log_messages.append(f"⚠️ **SAPAL {station}:** Error ({type(e).__name__}). Se registrará como N/A.")
                 results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
@@ -866,6 +849,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

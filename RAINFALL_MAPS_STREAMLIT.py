@@ -11,7 +11,7 @@ from urllib3.exceptions import InsecureRequestWarning
 warnings.filterwarnings("ignore", category=InsecureRequestWarning)
 import rasterio
 from rasterio.mask import mask # Importación corregida
- 
+from selenium.common.exceptions import TimeoutException, NoSuchElementException 
 import streamlit as st
 import pandas as pd
 import geopandas as gpd
@@ -874,6 +874,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

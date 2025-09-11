@@ -289,13 +289,16 @@ def get_latest_conagua_date(stations):
             continue
     return None
 def fetch_sapal_data(stations, report_date, log_messages, log_container):
-    """Realiza web scraping en SAPAL, con esperas explícitas para mayor robustez."""
+    """Realiza web scraping en SAPAL, adaptando la lógica robusta de R con pausas fijas."""
     results = []
     log_messages.append("--- Iniciando extracción de SAPAL... ---")
     log_container.markdown("\n\n".join(log_messages))
-
+    
+    
+    
     driver = None
     try:
+        # --- OPCIONES ESPECÍFICAS PARA LA NUBE ---
         options = webdriver.ChromeOptions()
         options.add_argument("--headless")
         options.add_argument("--no-sandbox")
@@ -305,9 +308,11 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         
         # Usar el chromedriver instalado por el sistema
         service = ChromeService(executable_path='/usr/bin/chromedriver')
-        driver = webdriver.Chrome(service=service, options=options)
         
-        wait = WebDriverWait(driver, 45) # Aumentamos el timeout general por si la página tarda en cargar
+        driver = webdriver.Chrome(service=service, options=options)
+        # --- FIN DE LA CONFIGURACIÓN PARA LA NUBE ---
+
+        wait = WebDriverWait(driver, 45)
         
         driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
         
@@ -324,14 +329,10 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         fecha_final = driver.find_element(By.XPATH, '//*[@id="to"]')
         fecha_final.click(); fecha_final.clear(); fecha_final.send_keys(end_date_str)
 
-        # <-- CAMBIO 1: Obtener el valor inicial de la celda de precipitación para tener una referencia
-        # Esto se hace una vez antes de empezar el bucle.
-        initial_precip_element = wait.until(EC.presence_of_element_located((By.XPATH, "(//td[contains(@class, 'MuiTableCell-root')]//div)[8]")))
-        last_precip_text = initial_precip_element.text
-
         for station in stations:
             try:
                 time.sleep(1)
+
                 dropdown = driver.find_element(By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]")
                 dropdown.click()
                 time.sleep(0.5)
@@ -352,7 +353,7 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
                 log_messages.append(f"✅ **SAPAL {station}:** {precip} mm")
 
             except Exception as e:
-                log_messages.append(f"⚠️ **SAPAL {station}:** Error ({type(e).__name__}). Se registrará como N/A.")
+                log_messages.append(f"⚠️ **SAPAL {station}:** Error. Se registrará como N/A.")
                 results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
             
             log_container.markdown("\n\n".join(log_messages))
@@ -849,6 +850,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

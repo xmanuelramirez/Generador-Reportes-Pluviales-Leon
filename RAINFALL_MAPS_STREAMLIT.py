@@ -323,7 +323,6 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         wait = WebDriverWait(driver, 45) # Aumentamos el timeout general por si la página tarda en cargar
 
         driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
-
         wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="from"]')))
 
         wait.until(EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[2]"))).click()
@@ -890,6 +889,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

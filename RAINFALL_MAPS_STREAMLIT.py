@@ -294,29 +294,27 @@ from selenium.common.exceptions import TimeoutException
 
 def fetch_sapal_data(stations, report_date, log_messages, log_container):
     """
-    Versión final que extrae datos de SAPAL directamente desde su API,
-    evitando bloqueos, el navegador y problemas de sincronización.
+    Versión final anti-bloqueo que usa la cabecera 'Referer' para simular
+    una solicitud legítima desde la propia página de SAPAL.
     """
     results = []
     log_messages.append("--- Iniciando extracción de SAPAL (vía API directa)... ---")
     log_container.markdown("\n\n".join(log_messages))
 
-    # La dirección de la "bodega" de datos de SAPAL
     api_url = "https://sapal.gob.mx/api/sapal/consultar/estaciones"
 
-    # Un "disfraz" simple para parecer un navegador normal
+    # --- CAMBIO CLAVE: Añadimos la cabecera 'Referer' ---
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Referer': 'https://www.sapal.gob.mx/estaciones-metereologicas' # <-- LA PIEZA QUE FALTABA
     }
 
-    # Formateamos las fechas como las necesita la API (YYYY-MM-DD)
     start_of_year_str = datetime(report_date.year, 1, 1).strftime('%Y-%m-%d')
     end_date_str = report_date.strftime('%Y-%m-%d')
 
     for station in stations:
         try:
-            # Creamos el "pedido" de datos en formato JSON
             payload = {
                 "nombreEstacion": station,
                 "fechaInicio": start_of_year_str,
@@ -324,16 +322,12 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
                 "tipoConsulta": "Diario"
             }
 
-            # Hacemos la solicitud directa a la API
+            # La solicitud ahora es idéntica a la de un navegador real
             response = requests.post(api_url, headers=headers, json=payload, timeout=30)
-            
-            # Verificar que la respuesta fue exitosa
             response.raise_for_status() 
             
-            # Extraer los datos de la respuesta JSON
             data = response.json()
             
-            # El dato viene en una lista, dentro de un diccionario
             precip_str = data[0]['acumulado']
             precip = float(precip_str)
 
@@ -343,8 +337,7 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         except requests.exceptions.RequestException as e:
             log_messages.append(f"⚠️ **SAPAL {station}:** Error de red ({type(e).__name__}). Se registrará como N/A.")
             results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
-        except (KeyError, IndexError, ValueError) as e:
-            # Este error ocurre si la respuesta de la API no tiene el formato esperado
+        except (KeyError, IndexError, ValueError):
             log_messages.append(f"⚠️ **SAPAL {station}:** La API no devolvió datos válidos. Se registrará como N/A.")
             results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
         except Exception as e:
@@ -356,7 +349,6 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
     log_messages.append("--- Extracción de SAPAL finalizada. ---")
     log_container.markdown("\n\n".join(log_messages))
     return pd.DataFrame(results)
-
 
 
 def filter_outliers(gdf, column='P_mm'):
@@ -845,6 +837,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

@@ -290,16 +290,14 @@ def get_latest_conagua_date(stations):
     return None
 
 def fetch_sapal_data(stations, report_date, log_messages, log_container):
-    """Realiza web scraping en SAPAL, adaptando la lógica robusta de R con pausas fijas.
-       Incluye debug para inspeccionar el DOM en Streamlit Cloud.
-    """
+    """Realiza web scraping en SAPAL con soporte para iframes y debug en Streamlit."""
     results = []
     log_messages.append("--- Iniciando extracción de SAPAL... ---")
     log_container.markdown("\n\n".join(log_messages))
 
     driver = None
     try:
-        # --- OPCIONES PARA EJECUCIÓN EN NUBE ---
+        # --- OPCIONES PARA NUBE ---
         options = webdriver.ChromeOptions()
         options.add_argument("--headless")
         options.add_argument("--no-sandbox")
@@ -309,60 +307,52 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
 
         service = ChromeService(executable_path='/usr/bin/chromedriver')
         driver = webdriver.Chrome(service=service, options=options)
-
         wait = WebDriverWait(driver, 45)
 
-        # --- ABRIR PÁGINA SAPAL ---
+        # --- ABRIR PÁGINA ---
         driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
-        import streamlit as st
 
-        st.download_button(
-            "Descargar HTML debug",
-            data=driver.page_source,
-            file_name="sapal_debug.html",
-            mime="text/html"
-        )
-
-
-        # --- DEBUG: guardar el HTML inicial ---
-        with open("sapal_debug.html", "w", encoding="utf-8") as f:
-            f.write(driver.page_source)
-
-        log_messages.append("🔎 Se guardó sapal_debug.html con el HTML inicial.")
+        # --- DEBUG: buscar iframes ---
+        iframes = driver.find_elements(By.TAG_NAME, "iframe")
+        log_messages.append(f"🔎 Número de iframes encontrados: {len(iframes)}")
+        for i, iframe in enumerate(iframes):
+            log_messages.append(f"Iframe {i}: {iframe.get_attribute('src')}")
         log_container.markdown("\n\n".join(log_messages))
 
-        # --- INTENTAR LOCALIZAR LOS INPUTS ---
-        try:
-            fecha_inicio = wait.until(
-                EC.presence_of_element_located(
-                    (By.XPATH, "(//input[contains(@class, 'MuiInputBase-input')])[1]")
-                )
-            )
-            fecha_final = wait.until(
-                EC.presence_of_element_located(
-                    (By.XPATH, "(//input[contains(@class, 'MuiInputBase-input')])[2]")
-                )
-            )
-        except TimeoutException:
-            log_messages.append("⚠️ No se encontraron los inputs de fecha. Revisar sapal_debug.html.")
+        # --- Cambiar al primer iframe si existe ---
+        if iframes:
+            driver.switch_to.frame(iframes[0])
+            log_messages.append("✅ Cambiado al primer iframe.")
             log_container.markdown("\n\n".join(log_messages))
-            return pd.DataFrame(results)
 
-        # --- AJUSTAR PERIODICIDAD ---
+        # --- DEBUG: mostrar preview del HTML actual ---
+        html_preview = driver.page_source[:3000]
+        log_messages.append("🔎 Preview del DOM (primeros 3000 caracteres):\n\n" + html_preview)
+        log_container.markdown("\n\n".join(log_messages))
+
+        # --- Intentar localizar inputs de fecha ---
+        fecha_inicio = wait.until(
+            EC.presence_of_element_located((By.XPATH, "(//input[contains(@class, 'MuiInputBase-input')])[1]"))
+        )
+        fecha_final = wait.until(
+            EC.presence_of_element_located((By.XPATH, "(//input[contains(@class, 'MuiInputBase-input')])[2]"))
+        )
+
+        # Seleccionar periodicidad "Diario"
         periodicidad = wait.until(
             EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[3]"))
         )
         periodicidad.click()
         wait.until(EC.element_to_be_clickable((By.XPATH, "//li[contains(text(), 'Diario')]"))).click()
 
-        # --- FECHAS ---
+        # Fechas
         start_of_year_str = datetime(report_date.year, 1, 1).strftime("%d%m%Y")
         end_date_str = report_date.strftime("%d%m%Y")
 
         fecha_inicio.click(); fecha_inicio.clear(); fecha_inicio.send_keys(start_of_year_str)
         fecha_final.click(); fecha_final.clear(); fecha_final.send_keys(end_date_str)
 
-        # --- LOOP ESTACIONES ---
+        # Loop estaciones
         for station in stations:
             try:
                 dropdown = wait.until(
@@ -404,6 +394,7 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         log_container.markdown("\n\n".join(log_messages))
 
     return pd.DataFrame(results)
+
 
 
 
@@ -893,6 +884,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

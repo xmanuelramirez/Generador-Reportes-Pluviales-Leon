@@ -295,6 +295,8 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
     log_messages.append("--- Iniciando extracción de SAPAL... ---")
     log_container.markdown("\n\n".join(log_messages))
     
+    
+    
     driver = None
     try:
         # --- OPCIONES ESPECÍFICAS PARA LA NUBE ---
@@ -850,6 +852,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

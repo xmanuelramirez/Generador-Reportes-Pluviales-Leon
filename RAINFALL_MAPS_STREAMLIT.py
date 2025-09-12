@@ -324,7 +324,6 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
 
         driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
 
-@@ -329,52 +324,73 @@
         wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="from"]')))
 
         wait.until(EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[2]"))).click()
@@ -891,6 +890,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

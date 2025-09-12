@@ -290,30 +290,47 @@ def get_latest_conagua_date(stations):
     return None
 
 def fetch_sapal_data(stations, report_date, log_messages, log_container):
-    """Realiza web scraping en SAPAL, reemplazando la pausa fija por una espera inteligente y robusta."""
+    """Realiza web scraping en SAPAL, adaptando la lógica robusta de R con pausas fijas."""
+    """Realiza web scraping en SAPAL, con esperas explícitas para mayor robustez."""
     results = []
     log_messages.append("--- Iniciando extracción de SAPAL... ---")
     log_container.markdown("\n\n".join(log_messages))
+    
+    
+    
+
+
 
     driver = None
     try:
-        # --- Configuración del WebDriver (sin cambios) ---
+        # --- OPCIONES ESPECÍFICAS PARA LA NUBE ---
         options = webdriver.ChromeOptions()
-        options.add_argument("--headless"); options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage"); options.add_argument("--disable-gpu")
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+@@ -308,11 +305,9 @@
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1920,1080")
-        
-        service = ChromeService(executable_path='/usr/bin/chromedriver')
-        driver = webdriver.Chrome(service=service, options=options)
-        
-        wait = WebDriverWait(driver, 45) # Un timeout general y generoso
 
-        # --- Configuración de la página (sin cambios) ---
+        # Usar el chromedriver instalado por el sistema
+        service = ChromeService(executable_path='/usr/bin/chromedriver')
+        
+
+        driver = webdriver.Chrome(service=service, options=options)
+        # --- FIN DE LA CONFIGURACIÓN PARA LA NUBE ---
+
+        wait = WebDriverWait(driver, 45)
+        
+        wait = WebDriverWait(driver, 45) # Aumentamos el timeout general por si la página tarda en cargar
+
         driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
+
+@@ -329,52 +324,73 @@
         wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="from"]')))
+
         wait.until(EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[2]"))).click()
         wait.until(EC.element_to_be_clickable((By.XPATH, "//li[contains(text(), 'Diario')]"))).click()
-        
+
         start_of_year_str = datetime(report_date.year, 1, 1).strftime("%d%m%Y")
         end_date_str = report_date.strftime("%d%m%Y")
 
@@ -322,47 +339,61 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         fecha_final = driver.find_element(By.XPATH, '//*[@id="to"]')
         fecha_final.click(); fecha_final.clear(); fecha_final.send_keys(end_date_str)
 
+        # <-- CAMBIO 1: Obtener el valor inicial de la celda de precipitación para tener una referencia
+        # Esto se hace una vez antes de empezar el bucle.
+        initial_precip_element = wait.until(EC.presence_of_element_located((By.XPATH, "(//td[contains(@class, 'MuiTableCell-root')]//div)[8]")))
+        last_precip_text = initial_precip_element.text
+
         for station in stations:
             try:
-                # 1. "Recordar" el valor actual de la tabla antes de hacer nada
-                precip_text_before = "-9999.99"
-                try:
-                    precip_element = driver.find_element(By.XPATH, "(//td[contains(@class, 'MuiTableCell-root')]//div)[8]")
-                    precip_text_before = precip_element.text
-                except NoSuchElementException:
-                    pass # La tabla no existe en la primera iteración, está bien.
+                time.sleep(1)
 
-                # 2. Tu flujo de selección original, que funciona bien
-                time.sleep(1) # Pausa para estabilidad del dropdown
                 dropdown = driver.find_element(By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]")
+                # La lógica de selección de estación se mantiene igual
+                dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]")))
                 dropdown.click()
                 time.sleep(0.5)
 
                 station_element = driver.find_element(By.XPATH, f"//li[contains(text(), '{station}')]")
+                # Usar una espera explícita también aquí es más robusto
+                station_element = wait.until(EC.element_to_be_clickable((By.XPATH, f"//li[contains(text(), '{station}')]")))
                 station_element.click()
                 time.sleep(0.5)
 
                 ver_button = driver.find_element(By.XPATH, "//button[.//span[text()='Ver']]")
+                ver_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Ver']]")))
                 ver_button.click()
 
-                # 3. LA SOLUCIÓN: Reemplazar time.sleep(1.5) por una espera que verifica el cambio
+                time.sleep(1.5)
+                
+                # <-- CAMBIO 2: La lógica de espera inteligente
+                # En lugar de time.sleep(1.5), esperamos a que el texto del elemento de precipitación cambie.
+                # El timeout de 20 segundos es el tiempo máximo que esperará antes de fallar.
                 wait.until(
                     EC.not_(
                         EC.text_to_be_present_in_element(
                             (By.XPATH, "(//td[contains(@class, 'MuiTableCell-root')]//div)[8]"), 
-                            precip_text_before
+                            last_precip_text
                         )
                     )
                 )
 
-                # 4. Leer el dato, ahora con 100% de certeza que es el nuevo
+                # Ahora que sabemos que el valor ha cambiado, lo leemos de forma segura
                 elements = driver.find_elements(By.CSS_SELECTOR, "td.MuiTableCell-root div")
                 precip_text = elements[7].text if len(elements) >= 8 else '0'
+                
+                # <-- CAMBIO 3: Actualizamos el valor de referencia para la siguiente iteración
+                last_precip_text = precip_text
+
                 precip = float(precip_text.replace(",", ""))
                 results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': precip})
                 log_messages.append(f"✅ **SAPAL {station}:** {precip} mm")
 
+            except TimeoutException: # <-- CAMBIO 4: Manejar el caso en que el valor nunca cambia
+                 log_messages.append(f"⚠️ **SAPAL {station}:** Timeout. El valor no se actualizó en la página. Se registrará como N/A.")
+                 results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
             except Exception as e:
+                log_messages.append(f"⚠️ **SAPAL {station}:** Error. Se registrará como N/A.")
                 log_messages.append(f"⚠️ **SAPAL {station}:** Error ({type(e).__name__}). Se registrará como N/A.")
                 results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
 
@@ -861,6 +892,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

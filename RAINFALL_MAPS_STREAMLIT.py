@@ -294,86 +294,68 @@ from selenium.common.exceptions import TimeoutException
 
 def fetch_sapal_data(stations, report_date, log_messages, log_container):
     """
-    Versión anti-bloqueo que disfraza al navegador para evadir la detección de bots.
+    Versión final que extrae datos de SAPAL directamente desde su API,
+    evitando bloqueos, el navegador y problemas de sincronización.
     """
     results = []
-    log_messages.append("--- Iniciando extracción de SAPAL... ---")
+    log_messages.append("--- Iniciando extracción de SAPAL (vía API directa)... ---")
     log_container.markdown("\n\n".join(log_messages))
-    
-    driver = None
-    try:
-        # --- OPCIONES ESPECÍFICAS PARA LA NUBE ---
-        options = webdriver.ChromeOptions()
-        
-        # --- INICIO DEL "DISFRAZ" ANTI-BLOQUEO ---
-        # 1. Usar un User-Agent de un navegador real y común
-        user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
-        options.add_argument(f'user-agent={user_agent}')
 
-        # 2. Desactivar las "banderas" que le dicen a la página que es un bot
-        options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        # --- FIN DEL "DISFRAZ" ---
-        
-        # Opciones originales para el entorno de la nube
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--window-size=1920,1080")
-        
-        service = ChromeService(executable_path='/usr/bin/chromedriver')
-        driver = webdriver.Chrome(service=service, options=options)
-        
-        wait = WebDriverWait(driver, 90) # Mantenemos el timeout generoso
-        
-        driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
-        
-        # Esperamos al elemento. Con el disfraz, ahora debería cargar.
-        wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="from"]')))
-        
-        # A partir de aquí, es tu código original que sabes que funciona una vez que la página carga
-        wait.until(EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[2]"))).click()
-        wait.until(EC.element_to_be_clickable((By.XPATH, "//li[contains(text(), 'Diario')]"))).click()
-        
-        start_of_year_str = datetime(report_date.year, 1, 1).strftime("%d%m%Y")
-        end_date_str = report_date.strftime("%d%m%Y")
+    # La dirección de la "bodega" de datos de SAPAL
+    api_url = "https://sapal.gob.mx/api/sapal/consultar/estaciones"
 
-        fecha_inicio = driver.find_element(By.XPATH, '//*[@id="from"]')
-        fecha_inicio.click(); fecha_inicio.clear(); fecha_inicio.send_keys(start_of_year_str)
-        fecha_final = driver.find_element(By.XPATH, '//*[@id="to"]')
-        fecha_final.click(); fecha_final.clear(); fecha_final.send_keys(end_date_str)
+    # Un "disfraz" simple para parecer un navegador normal
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+        'Content-Type': 'application/json'
+    }
 
-        for station in stations:
-            try:
-                time.sleep(1)
-                dropdown = driver.find_element(By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]")
-                dropdown.click()
-                time.sleep(0.5)
-                station_element = driver.find_element(By.XPATH, f"//li[contains(text(), '{station}')]")
-                station_element.click()
-                time.sleep(0.5)
-                ver_button = driver.find_element(By.XPATH, "//button[.//span[text()='Ver']]")
-                ver_button.click()
-                time.sleep(1.5) # Dejamos la pausa original
-                elements = driver.find_elements(By.CSS_SELECTOR, "td.MuiTableCell-root div")
-                precip_text = elements[7].text if len(elements) >= 8 else '0'
-                precip = float(precip_text.replace(",", ""))
-                results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': precip})
-                log_messages.append(f"✅ **SAPAL {station}:** {precip} mm")
-            except Exception as e:
-                log_messages.append(f"⚠️ **SAPAL {station}:** Error. Se registrará como N/A.")
-                results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
-            log_container.markdown("\n\n".join(log_messages))
+    # Formateamos las fechas como las necesita la API (YYYY-MM-DD)
+    start_of_year_str = datetime(report_date.year, 1, 1).strftime('%Y-%m-%d')
+    end_date_str = report_date.strftime('%Y-%m-%d')
+
+    for station in stations:
+        try:
+            # Creamos el "pedido" de datos en formato JSON
+            payload = {
+                "nombreEstacion": station,
+                "fechaInicio": start_of_year_str,
+                "fechaFinal": end_date_str,
+                "tipoConsulta": "Diario"
+            }
+
+            # Hacemos la solicitud directa a la API
+            response = requests.post(api_url, headers=headers, json=payload, timeout=30)
             
-    finally:
-        if driver:
-            driver.quit()
-        log_messages.append("--- Extracción de SAPAL finalizada. ---")
-        log_container.markdown("\n\n".join(log_messages))
-    return pd.DataFrame(results)
+            # Verificar que la respuesta fue exitosa
+            response.raise_for_status() 
+            
+            # Extraer los datos de la respuesta JSON
+            data = response.json()
+            
+            # El dato viene en una lista, dentro de un diccionario
+            precip_str = data[0]['acumulado']
+            precip = float(precip_str)
 
+            results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': precip})
+            log_messages.append(f"✅ **SAPAL {station}:** {precip} mm")
+
+        except requests.exceptions.RequestException as e:
+            log_messages.append(f"⚠️ **SAPAL {station}:** Error de red ({type(e).__name__}). Se registrará como N/A.")
+            results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
+        except (KeyError, IndexError, ValueError) as e:
+            # Este error ocurre si la respuesta de la API no tiene el formato esperado
+            log_messages.append(f"⚠️ **SAPAL {station}:** La API no devolvió datos válidos. Se registrará como N/A.")
+            results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
+        except Exception as e:
+            log_messages.append(f"⚠️ **SAPAL {station}:** Error inesperado ({type(e).__name__}). Se registrará como N/A.")
+            results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
+
+        log_container.markdown("\n\n".join(log_messages))
+
+    log_messages.append("--- Extracción de SAPAL finalizada. ---")
+    log_container.markdown("\n\n".join(log_messages))
+    return pd.DataFrame(results)
 
 
 
@@ -863,6 +845,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

@@ -305,11 +305,10 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         service = ChromeService(ChromeDriverManager().install())
         
         options = webdriver.ChromeOptions()
-        options.add_argument("--headless") # Ejecutar sin interfaz gráfica
-        options.add_argument("--no-sandbox") # Requerido en entornos Linux
-        options.add_argument("--disable-dev-shm-usage") # Evita problemas de memoria compartida
-        options.add_argument("--disable-gpu") # No hay GPU en el servidor
-        options.add_argument("--window-size=1920,1080") # Define un tamaño de ventana virtual
+        options.add_argument("--start-maximized")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
         options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36')
 
         driver = webdriver.Chrome(service=service, options=options)
@@ -852,6 +851,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

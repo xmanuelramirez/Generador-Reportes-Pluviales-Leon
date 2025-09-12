@@ -295,8 +295,6 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
     log_messages.append("--- Iniciando extracción de SAPAL... ---")
     log_container.markdown("\n\n".join(log_messages))
     
-    
-    
     driver = None
     try:
         # --- OPCIONES ESPECÍFICAS PARA LA NUBE ---
@@ -364,6 +362,7 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         log_messages.append("--- Extracción de SAPAL finalizada. ---")
         log_container.markdown("\n\n".join(log_messages))
     return pd.DataFrame(results)
+
 
 def filter_outliers(gdf, column='P_mm'):
     Q1 = gdf[column].quantile(0.25); Q3 = gdf[column].quantile(0.75)
@@ -851,6 +850,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

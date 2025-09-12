@@ -295,24 +295,24 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
     log_messages.append("--- Iniciando extracción de SAPAL... ---")
     log_container.markdown("\n\n".join(log_messages))
     
-    
+    st.warning(
+        "⚠️ **ACCIÓN REQUERIDA:** Se abrirá una ventana de Chrome para extraer los datos."
+        "\n\n**Por favor, no cierre esta ventana ni interactúe con ella.** El proceso es automático y la ventana se cerrará sola al terminar."
+    )
     
     driver = None
     try:
-        # --- OPCIONES ESPECÍFICAS PARA LA NUBE ---
+        service = ChromeService(ChromeDriverManager().install())
+        
         options = webdriver.ChromeOptions()
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--window-size=1920,1080")
-        
-        # Usar el chromedriver instalado por el sistema
-        service = ChromeService(executable_path='/usr/bin/chromedriver')
-        
-        driver = webdriver.Chrome(service=service, options=options)
-        # --- FIN DE LA CONFIGURACIÓN PARA LA NUBE ---
+        options.add_argument("--headless") # Ejecutar sin interfaz gráfica
+        options.add_argument("--no-sandbox") # Requerido en entornos Linux
+        options.add_argument("--disable-dev-shm-usage") # Evita problemas de memoria compartida
+        options.add_argument("--disable-gpu") # No hay GPU en el servidor
+        options.add_argument("--window-size=1920,1080") # Define un tamaño de ventana virtual
+        options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36')
 
+        driver = webdriver.Chrome(service=service, options=options)
         wait = WebDriverWait(driver, 45)
         
         driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
@@ -852,6 +852,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

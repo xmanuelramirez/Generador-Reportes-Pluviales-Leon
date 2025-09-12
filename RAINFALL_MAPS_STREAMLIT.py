@@ -294,7 +294,7 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
     results = []
     log_messages.append("--- Iniciando extracción de SAPAL... ---")
     log_container.markdown("\n\n".join(log_messages))
-    
+
     driver = None
     try:
         # --- OPCIONES ESPECÍFICAS PARA LA NUBE ---
@@ -304,52 +304,67 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1920,1080")
-        
+
         # Usar el chromedriver instalado por el sistema
         service = ChromeService(executable_path='/usr/bin/chromedriver')
-        
+
         driver = webdriver.Chrome(service=service, options=options)
         # --- FIN DE LA CONFIGURACIÓN PARA LA NUBE ---
 
         wait = WebDriverWait(driver, 45)
-        
-        driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
-        
-        # Esperar que exista y sea visible el campo de fecha "from"
-        fecha_inicio = wait.until(
-            EC.presence_of_element_located((By.XPATH, '//*[@id="from"]'))
-        )
-        wait.until(EC.visibility_of(fecha_inicio))
 
-        
-        wait.until(EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[2]"))).click()
+        driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
+
+        # Esperar que carguen los inputs de fecha (Material-UI inputs)
+        fecha_inicio = wait.until(
+            EC.presence_of_element_located((By.XPATH, "(//input[contains(@class, 'MuiInputBase-input')])[1]"))
+        )
+        fecha_final = wait.until(
+            EC.presence_of_element_located((By.XPATH, "(//input[contains(@class, 'MuiInputBase-input')])[2]"))
+        )
+
+        # Cambiar a "Diario"
+        periodicidad = wait.until(
+            EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[3]"))
+        )
+        periodicidad.click()
         wait.until(EC.element_to_be_clickable((By.XPATH, "//li[contains(text(), 'Diario')]"))).click()
-        
+
+        # Formato fechas
         start_of_year_str = datetime(report_date.year, 1, 1).strftime("%d%m%Y")
         end_date_str = report_date.strftime("%d%m%Y")
 
-        fecha_inicio = driver.find_element(By.XPATH, '//*[@id="from"]')
+        # Rellenar fechas
         fecha_inicio.click(); fecha_inicio.clear(); fecha_inicio.send_keys(start_of_year_str)
-        fecha_final = driver.find_element(By.XPATH, '//*[@id="to"]')
         fecha_final.click(); fecha_final.clear(); fecha_final.send_keys(end_date_str)
 
         for station in stations:
             try:
-                time.sleep(1)
-
-                dropdown = driver.find_element(By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]")
+                # Abrir menú de estaciones
+                dropdown = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]"))
+                )
                 dropdown.click()
-                time.sleep(0.5)
-                
-                station_element = driver.find_element(By.XPATH, f"//li[contains(text(), '{station}')]")
+
+                # Seleccionar estación exacta
+                station_element = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, f"//li[normalize-space(text())='{station}']"))
+                )
+                driver.execute_script("arguments[0].scrollIntoView(true);", station_element)
                 station_element.click()
-                time.sleep(0.5)
-                
-                ver_button = driver.find_element(By.XPATH, "//button[.//span[text()='Ver']]")
+
+                # Botón Ver
+                ver_button = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Ver']]"))
+                )
                 ver_button.click()
-                
-                time.sleep(1.5)
-                
+
+                # Esperar tabla de resultados
+                wait.until(
+                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, "td.MuiTableCell-root div"))
+                )
+
+                # Leer precipitación
                 elements = driver.find_elements(By.CSS_SELECTOR, "td.MuiTableCell-root div")
                 precip_text = elements[7].text if len(elements) >= 8 else '0'
                 precip = float(precip_text.replace(",", ""))
@@ -359,14 +374,17 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
             except Exception as e:
                 log_messages.append(f"⚠️ **SAPAL {station}:** Error. Se registrará como N/A.")
                 results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
-            
+
             log_container.markdown("\n\n".join(log_messages))
+
     finally:
         if driver:
             driver.quit()
         log_messages.append("--- Extracción de SAPAL finalizada. ---")
         log_container.markdown("\n\n".join(log_messages))
+
     return pd.DataFrame(results)
+
 
 
 def filter_outliers(gdf, column='P_mm'):
@@ -855,6 +873,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

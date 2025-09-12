@@ -289,121 +289,87 @@ def get_latest_conagua_date(stations):
             continue
     return None
 
+# Importa esta excepción al principio si no la tienes
+from selenium.common.exceptions import TimeoutException
+
 def fetch_sapal_data(stations, report_date, log_messages, log_container):
-    """Realiza web scraping en SAPAL con soporte para iframes y debug en Streamlit."""
+    """
+    Versión de depuración para diagnosticar por qué la página de SAPAL no carga.
+    """
     results = []
     log_messages.append("--- Iniciando extracción de SAPAL... ---")
     log_container.markdown("\n\n".join(log_messages))
-
+    
     driver = None
     try:
+        # --- Configuración del WebDriver ---
         options = webdriver.ChromeOptions()
-        options.add_argument("--headless=new")  # modo headless moderno
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
+        options.add_argument("--headless"); options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage"); options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1920,1080")
-        options.add_argument("--disable-blink-features=AutomationControlled")  # evitar bloqueo anti-bot
-
-
+        
         service = ChromeService(executable_path='/usr/bin/chromedriver')
         driver = webdriver.Chrome(service=service, options=options)
-        wait = WebDriverWait(driver, 90)
-
-        # --- ABRIR PÁGINA ---
-        driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
-        # Esperar a que React monte algo dentro de #root
-        wait.until(EC.presence_of_element_located((By.ID, "root")))
-        log_messages.append("⌛ Contenedor #root detectado, esperando inputs...")
-        log_container.markdown("\n\n".join(log_messages))
         
-        # Esperar a que aparezca al menos un input en el DOM
-        wait.until(EC.presence_of_element_located((By.TAG_NAME, "input")))
-        log_messages.append("✅ Inputs detectados en el DOM.")
-        log_container.markdown("\n\n".join(log_messages))
+        wait = WebDriverWait(driver, 60) # 60 segundos es suficiente para el diagnóstico
 
-
-        # --- DEBUG: buscar iframes ---
-        iframes = driver.find_elements(By.TAG_NAME, "iframe")
-        log_messages.append(f"🔎 Número de iframes encontrados: {len(iframes)}")
-        for i, iframe in enumerate(iframes):
-            log_messages.append(f"Iframe {i}: {iframe.get_attribute('src')}")
-        log_container.markdown("\n\n".join(log_messages))
-
-        # --- Cambiar al primer iframe si existe ---
-        if iframes:
-            driver.switch_to.frame(iframes[0])
-            log_messages.append("✅ Cambiado al primer iframe.")
+        # --- BLOQUE DE DIAGNÓSTICO ---
+        try:
+            driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
+            # Intentamos esperar por el elemento más básico de la página
+            wait.until(EC.presence_of_element_located((By.ID, "from")))
+        except TimeoutException:
+            # Si falla, imprimimos el código fuente de la página para ver qué cargó
+            log_messages.append("--------------------------------------------------")
+            log_messages.append("ERROR CRÍTICO: La página de SAPAL no cargó a tiempo.")
+            log_messages.append("El navegador vio el siguiente contenido:")
+            log_messages.append(driver.page_source) # <-- ESTA LÍNEA ES LA CLAVE
+            log_messages.append("--------------------------------------------------")
             log_container.markdown("\n\n".join(log_messages))
+            # Forzamos que el error detenga la app para poder ver el log
+            raise
 
-        # --- DEBUG: mostrar preview del HTML actual ---
-        html_preview = driver.page_source[:3000]
-        log_messages.append("🔎 Preview del DOM (primeros 3000 caracteres):\n\n" + html_preview)
-        log_container.markdown("\n\n".join(log_messages))
-
-        # --- Intentar localizar inputs de fecha ---
-        fecha_inicio = wait.until(
-            EC.presence_of_element_located((By.XPATH, "(//input[contains(@class, 'MuiInputBase-input')])[1]"))
-        )
-        fecha_final = wait.until(
-            EC.presence_of_element_located((By.XPATH, "(//input[contains(@class, 'MuiInputBase-input')])[2]"))
-        )
-
-        # Seleccionar periodicidad "Diario"
-        periodicidad = wait.until(
-            EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[3]"))
-        )
-        periodicidad.click()
+        # --- El resto del código original ---
+        
+        wait.until(EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[2]"))).click()
         wait.until(EC.element_to_be_clickable((By.XPATH, "//li[contains(text(), 'Diario')]"))).click()
-
-        # Fechas
+        
         start_of_year_str = datetime(report_date.year, 1, 1).strftime("%d%m%Y")
         end_date_str = report_date.strftime("%d%m%Y")
 
+        fecha_inicio = driver.find_element(By.XPATH, '//*[@id="from"]')
         fecha_inicio.click(); fecha_inicio.clear(); fecha_inicio.send_keys(start_of_year_str)
+        fecha_final = driver.find_element(By.XPATH, '//*[@id="to"]')
         fecha_final.click(); fecha_final.clear(); fecha_final.send_keys(end_date_str)
 
-        # Loop estaciones
+        # ... (el resto de tu bucle for original)
         for station in stations:
             try:
-                dropdown = wait.until(
-                    EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]"))
-                )
+                time.sleep(1)
+                dropdown = driver.find_element(By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]")
                 dropdown.click()
-
-                station_element = wait.until(
-                    EC.element_to_be_clickable((By.XPATH, f"//li[normalize-space(text())='{station}']"))
-                )
-                driver.execute_script("arguments[0].scrollIntoView(true);", station_element)
+                time.sleep(0.5)
+                station_element = driver.find_element(By.XPATH, f"//li[contains(text(), '{station}')]")
                 station_element.click()
-
-                ver_button = wait.until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Ver']]"))
-                )
+                time.sleep(0.5)
+                ver_button = driver.find_element(By.XPATH, "//button[.//span[text()='Ver']]")
                 ver_button.click()
-
-                wait.until(
-                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, "td.MuiTableCell-root div"))
-                )
-
+                time.sleep(1.5)
                 elements = driver.find_elements(By.CSS_SELECTOR, "td.MuiTableCell-root div")
                 precip_text = elements[7].text if len(elements) >= 8 else '0'
                 precip = float(precip_text.replace(",", ""))
                 results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': precip})
                 log_messages.append(f"✅ **SAPAL {station}:** {precip} mm")
-
             except Exception as e:
                 log_messages.append(f"⚠️ **SAPAL {station}:** Error. Se registrará como N/A.")
                 results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
-
             log_container.markdown("\n\n".join(log_messages))
-
+            
     finally:
         if driver:
             driver.quit()
         log_messages.append("--- Extracción de SAPAL finalizada. ---")
         log_container.markdown("\n\n".join(log_messages))
-
     return pd.DataFrame(results)
 
 
@@ -895,6 +861,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

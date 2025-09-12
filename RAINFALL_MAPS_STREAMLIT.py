@@ -315,7 +315,12 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         
         driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
         
-        wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="from"]')))
+        # Esperar que exista y sea visible el campo de fecha "from"
+        fecha_inicio = wait.until(
+            EC.presence_of_element_located((By.XPATH, '//*[@id="from"]'))
+        )
+        wait.until(EC.visibility_of(fecha_inicio))
+
         
         wait.until(EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[2]"))).click()
         wait.until(EC.element_to_be_clickable((By.XPATH, "//li[contains(text(), 'Diario')]"))).click()
@@ -850,6 +855,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

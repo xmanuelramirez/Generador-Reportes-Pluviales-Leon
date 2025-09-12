@@ -297,20 +297,31 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
 
     driver = None
     try:
-        # --- OPCIONES PARA NUBE ---
         options = webdriver.ChromeOptions()
-        options.add_argument("--headless")
+        options.add_argument("--headless=new")  # modo headless moderno
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1920,1080")
+        options.add_argument("--disable-blink-features=AutomationControlled")  # evitar bloqueo anti-bot
+
 
         service = ChromeService(executable_path='/usr/bin/chromedriver')
         driver = webdriver.Chrome(service=service, options=options)
-        wait = WebDriverWait(driver, 45)
+        wait = WebDriverWait(driver, 90)
 
         # --- ABRIR PÁGINA ---
         driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
+        # Esperar a que React monte algo dentro de #root
+        wait.until(EC.presence_of_element_located((By.ID, "root")))
+        log_messages.append("⌛ Contenedor #root detectado, esperando inputs...")
+        log_container.markdown("\n\n".join(log_messages))
+        
+        # Esperar a que aparezca al menos un input en el DOM
+        wait.until(EC.presence_of_element_located((By.TAG_NAME, "input")))
+        log_messages.append("✅ Inputs detectados en el DOM.")
+        log_container.markdown("\n\n".join(log_messages))
+
 
         # --- DEBUG: buscar iframes ---
         iframes = driver.find_elements(By.TAG_NAME, "iframe")
@@ -884,6 +895,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

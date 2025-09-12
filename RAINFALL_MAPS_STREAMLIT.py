@@ -314,6 +314,15 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
 
         # --- ABRIR PÁGINA SAPAL ---
         driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
+        import streamlit as st
+
+        st.download_button(
+            "Descargar HTML debug",
+            data=driver.page_source,
+            file_name="sapal_debug.html",
+            mime="text/html"
+        )
+
 
         # --- DEBUG: guardar el HTML inicial ---
         with open("sapal_debug.html", "w", encoding="utf-8") as f:
@@ -884,6 +893,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

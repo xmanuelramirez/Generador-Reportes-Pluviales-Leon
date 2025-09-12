@@ -290,14 +290,16 @@ def get_latest_conagua_date(stations):
     return None
 
 def fetch_sapal_data(stations, report_date, log_messages, log_container):
-    """Realiza web scraping en SAPAL, adaptando la lógica robusta de R con pausas fijas."""
+    """Realiza web scraping en SAPAL, adaptando la lógica robusta de R con pausas fijas.
+       Incluye debug para inspeccionar el DOM en Streamlit Cloud.
+    """
     results = []
     log_messages.append("--- Iniciando extracción de SAPAL... ---")
     log_container.markdown("\n\n".join(log_messages))
 
     driver = None
     try:
-        # --- OPCIONES ESPECÍFICAS PARA LA NUBE ---
+        # --- OPCIONES PARA EJECUCIÓN EN NUBE ---
         options = webdriver.ChromeOptions()
         options.add_argument("--headless")
         options.add_argument("--no-sandbox")
@@ -305,66 +307,75 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1920,1080")
 
-        # Usar el chromedriver instalado por el sistema
         service = ChromeService(executable_path='/usr/bin/chromedriver')
-
         driver = webdriver.Chrome(service=service, options=options)
-        # --- FIN DE LA CONFIGURACIÓN PARA LA NUBE ---
 
         wait = WebDriverWait(driver, 45)
 
+        # --- ABRIR PÁGINA SAPAL ---
         driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
 
-        # Esperar que carguen los inputs de fecha (Material-UI inputs)
-        fecha_inicio = wait.until(
-            EC.presence_of_element_located((By.XPATH, "(//input[contains(@class, 'MuiInputBase-input')])[1]"))
-        )
-        fecha_final = wait.until(
-            EC.presence_of_element_located((By.XPATH, "(//input[contains(@class, 'MuiInputBase-input')])[2]"))
-        )
+        # --- DEBUG: guardar el HTML inicial ---
+        with open("sapal_debug.html", "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
 
-        # Cambiar a "Diario"
+        log_messages.append("🔎 Se guardó sapal_debug.html con el HTML inicial.")
+        log_container.markdown("\n\n".join(log_messages))
+
+        # --- INTENTAR LOCALIZAR LOS INPUTS ---
+        try:
+            fecha_inicio = wait.until(
+                EC.presence_of_element_located(
+                    (By.XPATH, "(//input[contains(@class, 'MuiInputBase-input')])[1]")
+                )
+            )
+            fecha_final = wait.until(
+                EC.presence_of_element_located(
+                    (By.XPATH, "(//input[contains(@class, 'MuiInputBase-input')])[2]")
+                )
+            )
+        except TimeoutException:
+            log_messages.append("⚠️ No se encontraron los inputs de fecha. Revisar sapal_debug.html.")
+            log_container.markdown("\n\n".join(log_messages))
+            return pd.DataFrame(results)
+
+        # --- AJUSTAR PERIODICIDAD ---
         periodicidad = wait.until(
             EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[3]"))
         )
         periodicidad.click()
         wait.until(EC.element_to_be_clickable((By.XPATH, "//li[contains(text(), 'Diario')]"))).click()
 
-        # Formato fechas
+        # --- FECHAS ---
         start_of_year_str = datetime(report_date.year, 1, 1).strftime("%d%m%Y")
         end_date_str = report_date.strftime("%d%m%Y")
 
-        # Rellenar fechas
         fecha_inicio.click(); fecha_inicio.clear(); fecha_inicio.send_keys(start_of_year_str)
         fecha_final.click(); fecha_final.clear(); fecha_final.send_keys(end_date_str)
 
+        # --- LOOP ESTACIONES ---
         for station in stations:
             try:
-                # Abrir menú de estaciones
                 dropdown = wait.until(
                     EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]"))
                 )
                 dropdown.click()
 
-                # Seleccionar estación exacta
                 station_element = wait.until(
                     EC.element_to_be_clickable((By.XPATH, f"//li[normalize-space(text())='{station}']"))
                 )
                 driver.execute_script("arguments[0].scrollIntoView(true);", station_element)
                 station_element.click()
 
-                # Botón Ver
                 ver_button = wait.until(
                     EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Ver']]"))
                 )
                 ver_button.click()
 
-                # Esperar tabla de resultados
                 wait.until(
                     EC.presence_of_all_elements_located((By.CSS_SELECTOR, "td.MuiTableCell-root div"))
                 )
 
-                # Leer precipitación
                 elements = driver.find_elements(By.CSS_SELECTOR, "td.MuiTableCell-root div")
                 precip_text = elements[7].text if len(elements) >= 8 else '0'
                 precip = float(precip_text.replace(",", ""))
@@ -873,6 +884,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

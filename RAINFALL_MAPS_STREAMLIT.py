@@ -446,94 +446,6 @@ def load_geodata():
             "presa": gpd.read_file(os.path.join(shapefile_path, "EL PALOTE.shp")),
             "streams": gpd.read_file(os.path.join(shapefile_path, "CORRIENTES_LEON_012025.shp"))
         }
-
-        try:
-            data["logo"] = mpimg.imread(os.path.join(shapefile_path, "logo_sapal.png"))
-        except FileNotFoundError:
-            data["logo"] = None
-        return data
-
-def filter_outliers(gdf, column='P_mm'):
-    Q1 = gdf[column].quantile(0.25); Q3 = gdf[column].quantile(0.75)
-    IQR = Q3 - Q1
-    lower_bound = Q1 - 3 * IQR; upper_bound = Q3 + 3 * IQR
-    outliers = gdf[(gdf[column] < lower_bound) | (gdf[column] > upper_bound)]
-    gdf_filtered = gdf[(gdf[column] >= lower_bound) & (gdf[column] <= upper_bound)]
-    return gdf_filtered, outliers
-
-def find_best_interpolation_model(points_gdf, boundary_gdf):
-    resolution = 100
-    if len(points_gdf) < 5: return None, None
-    def _custom_idw(train_coords, train_values, test_coords, power):
-        d = np.linalg.norm(train_coords - test_coords, axis=1)
-        if np.any(d == 0): return train_values[d == 0][0]
-        w = 1.0 / (d ** power)
-        return np.sum(w * train_values) / np.sum(w)
-    points_proj = points_gdf.to_crs("EPSG:32614"); boundary_proj = boundary_gdf.to_crs("EPSG:32614")
-    coords = np.array(list(zip(points_proj.geometry.x, points_proj.geometry.y))); values = points_proj['P_mm'].to_numpy()
-    loo = LeaveOneOut()
-    idw_powers = np.arange(1.0, 4.1, 0.5); idw_rmse_scores = []
-    for p in idw_powers:
-        preds = [_custom_idw(coords[train_idx], values[train_idx], coords[test_idx][0], p) for train_idx, test_idx in loo.split(coords)]
-        idw_rmse_scores.append(np.sqrt(mean_squared_error(values, preds)))
-    best_power = idw_powers[np.argmin(idw_rmse_scores)]
-    metrics = []
-    idw_preds = [_custom_idw(coords[train_idx], values[train_idx], coords[test_idx][0], best_power) for train_idx, test_idx in loo.split(coords)]
-    metrics.append({'Método': 'IDW Optimizado', 'RMSE': np.sqrt(mean_squared_error(values, idw_preds)), 'MAE': mean_absolute_error(values, idw_preds)})
-    k_preds, k_reals = [], []
-    for train_idx, test_idx in loo.split(coords):
-        try:
-            ok = OrdinaryKriging(coords[train_idx, 0], coords[train_idx, 1], values[train_idx], variogram_model='spherical', verbose=False, enable_plotting=False)
-            pred, _ = ok.execute('points', coords[test_idx, 0], coords[test_idx, 1])
-            k_preds.append(pred[0]); k_reals.append(values[test_idx][0])
-        except Exception: continue
-    if k_preds: metrics.append({'Método': 'Kriging', 'RMSE': np.sqrt(mean_squared_error(k_reals, k_preds)), 'MAE': mean_absolute_error(k_reals, k_preds)})
-    metrics_df = pd.DataFrame(metrics).round(3)
-    best_method_row = metrics_df.loc[metrics_df['RMSE'].idxmin()]
-    xmin, ymin, xmax, ymax = boundary_proj.total_bounds
-    grid_x, grid_y = np.arange(xmin, xmax, resolution), np.arange(ymin, ymax, resolution)
-    if 'IDW' in best_method_row['Método']:
-        gx, gy = np.meshgrid(grid_x, grid_y)
-        flat_grid = np.c_[gx.ravel(), gy.ravel()]
-        z_grid_flat = np.array([_custom_idw(coords, values, pt, best_power) for pt in flat_grid])
-        z_grid = z_grid_flat.reshape(gx.shape)
-    else:
-        ok = OrdinaryKriging(coords[:, 0], coords[:, 1], values, variogram_model='spherical', verbose=False, enable_plotting=False)
-        z_grid, _ = ok.execute('grid', grid_x, grid_y)
-    z_grid = np.where(z_grid < 0, 0, z_grid)
-    transform = from_origin(grid_x[0], grid_y[-1], resolution, resolution)
-    with rasterio.io.MemoryFile() as memfile:
-        with memfile.open(
-            driver='GTiff', height=z_grid.shape[0], width=z_grid.shape[1],
-            count=1, dtype=z_grid.dtype, crs="EPSG:32614", transform=transform
-        ) as dataset:
-            dataset.write(z_grid, 1)
-        with memfile.open() as src:
-            # Pasa el objeto src a la función mask
-            # Línea corregida
-            out_image, out_transform = mask(src, boundary_gdf.geometry, crop=True, all_touched=True, filled=True, nodata=np.nan)
-            out_meta = src.meta.copy()
-
-    # Se corrige el valor 'nodata' para que no sea 0
-    out_meta.update({"driver": "GTiff", "height": out_image.shape[1], "width": out_image.shape[2], "transform": out_transform, "nodata": np.nan})
-    final_raster_io = io.BytesIO()
-    with rasterio.open(final_raster_io, "w", **out_meta) as dest: dest.write(out_image)
-    final_raster_io.seek(0)
-    return {"raster_io": final_raster_io, "raster_image": out_image, "raster_meta": out_meta, "best_method": best_method_row['Método']}, metrics_df
-@st.cache_resource
-def load_geodata():
-    shapefile_path = "shapefiles" # O "Shapefiles", el nombre correcto de tu carpeta
-    try:
-        data = {
-            "boundary": gpd.read_file(os.path.join(shapefile_path, "LIMITE.shp")),
-            "stations": gpd.read_file(os.path.join(shapefile_path, "ESTACIONES_actualizado.shp")),
-            # --- CAMBIO AQUÍ: La carga de hillshade ahora es opcional ---
-            "hillshade": rasterio.open(os.path.join(shapefile_path, "HILLSHADE_LEON.tif")),
-            "urban": gpd.read_file(os.path.join(shapefile_path, "LIMITE_URBANO.shp")),
-            "cuenca": gpd.read_file(os.path.join(shapefile_path, "CUENCA_PALOTE.shp")),
-            "presa": gpd.read_file(os.path.join(shapefile_path, "EL PALOTE.shp")),
-            "streams": gpd.read_file(os.path.join(shapefile_path, "CORRIENTES_LEON_012025.shp"))
-        }
         
         try:
             data["logo"] = mpimg.imread(os.path.join(shapefile_path, "logo_sapal.png"))
@@ -939,6 +851,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

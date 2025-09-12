@@ -307,7 +307,6 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         options = webdriver.ChromeOptions()
         options.add_argument("--headless")
         options.add_argument("--no-sandbox")
-@@ -308,11 +305,9 @@
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1920,1080")
@@ -892,6 +891,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

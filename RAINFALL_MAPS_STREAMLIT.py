@@ -290,6 +290,10 @@ def get_latest_conagua_date(stations):
     return None
 
 def fetch_sapal_data(stations, report_date, log_messages, log_container):
+    """
+    Versión robusta para SAPAL que utiliza scroll, clics de JavaScript y esperas
+    de estabilidad para evitar errores de sincronización y `AttributeError`.
+    """
     """Realiza web scraping en SAPAL, adaptando la lógica robusta de R con pausas fijas."""
     """Realiza web scraping en SAPAL, con esperas explícitas para mayor robustez."""
     results = []
@@ -299,10 +303,9 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
     
     
 
-
-
     driver = None
     try:
+        # --- Configuración del WebDriver ---
         # --- OPCIONES ESPECÍFICAS PARA LA NUBE ---
         options = webdriver.ChromeOptions()
         options.add_argument("--headless")
@@ -313,36 +316,50 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
 
         # Usar el chromedriver instalado por el sistema
         service = ChromeService(executable_path='/usr/bin/chromedriver')
-        
+        driver = webdriver.Chrome(service=service, options=options)
 
+        wait = WebDriverWait(driver, 45) # Timeout generoso
         driver = webdriver.Chrome(service=service, options=options)
         # --- FIN DE LA CONFIGURACIÓN PARA LA NUBE ---
 
         wait = WebDriverWait(driver, 45)
-        
+
+        # --- Configuración inicial de la página ---
         wait = WebDriverWait(driver, 45) # Aumentamos el timeout general por si la página tarda en cargar
 
         driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
+        
         wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="from"]')))
-
+        
         wait.until(EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[2]"))).click()
         wait.until(EC.element_to_be_clickable((By.XPATH, "//li[contains(text(), 'Diario')]"))).click()
-
+        
         start_of_year_str = datetime(report_date.year, 1, 1).strftime("%d%m%Y")
         end_date_str = report_date.strftime("%d%m%Y")
 
         fecha_inicio = driver.find_element(By.XPATH, '//*[@id="from"]')
         fecha_inicio.click(); fecha_inicio.clear(); fecha_inicio.send_keys(start_of_year_str)
+
         fecha_final = driver.find_element(By.XPATH, '//*[@id="to"]')
         fecha_final.click(); fecha_final.clear(); fecha_final.send_keys(end_date_str)
 
+        # --- Bucle principal de extracción ---
         # <-- CAMBIO 1: Obtener el valor inicial de la celda de precipitación para tener una referencia
         # Esto se hace una vez antes de empezar el bucle.
         initial_precip_element = wait.until(EC.presence_of_element_located((By.XPATH, "(//td[contains(@class, 'MuiTableCell-root')]//div)[8]")))
         last_precip_text = initial_precip_element.text
 
         for station in stations:
+            precip_text_before = "-9999.99"
             try:
+                # 1. CAPTURAR ESTADO "ANTES"
+                try:
+                    precip_element = driver.find_element(By.XPATH, "(//td[contains(@class, 'MuiTableCell-root')]//div)[8]")
+                    precip_text_before = precip_element.text
+                except NoSuchElementException:
+                    pass # Es la primera iteración, el elemento no existe todavía.
+
+                # 2. ABRIR EL MENÚ DE ESTACIONES
                 time.sleep(1)
 
                 dropdown = driver.find_element(By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]")
@@ -351,16 +368,33 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
                 dropdown.click()
                 time.sleep(0.5)
 
+                # 3. SELECCIONAR LA ESTACIÓN DE FORMA SEGURA
+                station_list_locator = (By.CSS_SELECTOR, "ul[role='listbox']")
+                wait.until(EC.visibility_of_element_located(station_list_locator)) # Esperar a que el menú aparezca
+                
+                station_element = wait.until(EC.visibility_of_element_located((By.XPATH, f"//li[normalize-space()='{station}']")))
+                
+                # MEJORA CLAVE 1: Mover el elemento a la vista antes de hacer clic
+                driver.execute_script("arguments[0].scrollIntoView(true);", station_element)
+                
+                # MEJORA CLAVE 2: Usar el click más robusto
+                driver.execute_script("arguments[0].click();", station_element)
+
+                # MEJORA CLAVE 3: Esperar a que la UI se estabilice (el menú se cierre)
+                wait.until(EC.invisibility_of_element_located(station_list_locator))
                 station_element = driver.find_element(By.XPATH, f"//li[contains(text(), '{station}')]")
                 # Usar una espera explícita también aquí es más robusto
                 station_element = wait.until(EC.element_to_be_clickable((By.XPATH, f"//li[contains(text(), '{station}')]")))
                 station_element.click()
                 time.sleep(0.5)
 
+                # 4. HACER CLIC EN "VER"
                 ver_button = driver.find_element(By.XPATH, "//button[.//span[text()='Ver']]")
                 ver_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[.//span[text()='Ver']]")))
+                driver.execute_script("arguments[0].click();", ver_button)
                 ver_button.click()
 
+                # 5. ESPERAR A QUE EL DATO SE ACTUALICE
                 time.sleep(1.5)
                 
                 # <-- CAMBIO 2: La lógica de espera inteligente
@@ -370,11 +404,15 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
                     EC.not_(
                         EC.text_to_be_present_in_element(
                             (By.XPATH, "(//td[contains(@class, 'MuiTableCell-root')]//div)[8]"), 
+                            precip_text_before
                             last_precip_text
                         )
                     )
                 )
 
+                # 6. LEER EL NUEVO DATO
+                elements_after = driver.find_elements(By.CSS_SELECTOR, "td.MuiTableCell-root div")
+                precip_text = elements_after[7].text if len(elements_after) >= 8 else '0'
                 # Ahora que sabemos que el valor ha cambiado, lo leemos de forma segura
                 elements = driver.find_elements(By.CSS_SELECTOR, "td.MuiTableCell-root div")
                 precip_text = elements[7].text if len(elements) >= 8 else '0'
@@ -390,9 +428,11 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
                  log_messages.append(f"⚠️ **SAPAL {station}:** Timeout. El valor no se actualizó en la página. Se registrará como N/A.")
                  results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
             except Exception as e:
+                # Este bloque ahora capturará errores de forma más informativa
                 log_messages.append(f"⚠️ **SAPAL {station}:** Error. Se registrará como N/A.")
                 log_messages.append(f"⚠️ **SAPAL {station}:** Error ({type(e).__name__}). Se registrará como N/A.")
                 results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
+            
 
             log_container.markdown("\n\n".join(log_messages))
     finally:
@@ -401,7 +441,6 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         log_messages.append("--- Extracción de SAPAL finalizada. ---")
         log_container.markdown("\n\n".join(log_messages))
     return pd.DataFrame(results)
-
 
 def filter_outliers(gdf, column='P_mm'):
     Q1 = gdf[column].quantile(0.25); Q3 = gdf[column].quantile(0.75)
@@ -889,6 +928,7 @@ else:
         
 
                     st.rerun()
+
 
 
 

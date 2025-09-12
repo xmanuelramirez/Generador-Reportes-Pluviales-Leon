@@ -294,9 +294,9 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
     results = []
     log_messages.append("--- Iniciando extracción de SAPAL... ---")
     log_container.markdown("\n\n".join(log_messages))
-
-
-
+    
+    
+    
     driver = None
     try:
         # --- OPCIONES ESPECÍFICAS PARA LA NUBE ---
@@ -306,22 +306,22 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1920,1080")
-
+        
         # Usar el chromedriver instalado por el sistema
         service = ChromeService(executable_path='/usr/bin/chromedriver')
-
+        
         driver = webdriver.Chrome(service=service, options=options)
         # --- FIN DE LA CONFIGURACIÓN PARA LA NUBE ---
 
         wait = WebDriverWait(driver, 45)
-
+        
         driver.get("https://www.sapal.gob.mx/estaciones-metereologicas")
-
+        
         wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="from"]')))
-
+        
         wait.until(EC.element_to_be_clickable((By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[2]"))).click()
         wait.until(EC.element_to_be_clickable((By.XPATH, "//li[contains(text(), 'Diario')]"))).click()
-
+        
         start_of_year_str = datetime(report_date.year, 1, 1).strftime("%d%m%Y")
         end_date_str = report_date.strftime("%d%m%Y")
 
@@ -337,16 +337,16 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
                 dropdown = driver.find_element(By.XPATH, "(//*[contains(@class, 'MuiInputBase-input')])[1]")
                 dropdown.click()
                 time.sleep(0.5)
-
+                
                 station_element = driver.find_element(By.XPATH, f"//li[contains(text(), '{station}')]")
                 station_element.click()
                 time.sleep(0.5)
-
+                
                 ver_button = driver.find_element(By.XPATH, "//button[.//span[text()='Ver']]")
                 ver_button.click()
-
+                
                 time.sleep(1.5)
-
+                
                 elements = driver.find_elements(By.CSS_SELECTOR, "td.MuiTableCell-root div")
                 precip_text = elements[7].text if len(elements) >= 8 else '0'
                 precip = float(precip_text.replace(",", ""))
@@ -356,7 +356,7 @@ def fetch_sapal_data(stations, report_date, log_messages, log_container):
             except Exception as e:
                 log_messages.append(f"⚠️ **SAPAL {station}:** Error. Se registrará como N/A.")
                 results.append({'Name': station, 'ENTIDAD': 'SAPAL', 'P_mm': np.nan})
-
+            
             log_container.markdown("\n\n".join(log_messages))
     finally:
         if driver:
@@ -851,6 +851,7 @@ else:
         
 
                     st.rerun()
+
 
 
 
